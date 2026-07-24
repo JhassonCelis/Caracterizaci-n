@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLANTILLA · HYC Drivers · Caracterización Estudiantil</title>
+<!--
+  ============================================================
+  PLANTILLA DE TRABAJO — módulo HYC Drivers
+  ============================================================
+  Este archivo es un punto de partida AISLADO para construir el módulo
+  "HYC Drivers" sin tocar caracterizacion_poligran.html (el dashboard
+  principal). Cuando el módulo esté listo, se copia:
+    1. El <section id="tab-drivers"> completo (abajo, en <body>)
+    2. Las funciones JS de tu módulo (bloque "TU MÓDULO EMPIEZA AQUÍ")
+    3. El fetch('Habitos_Consumo') al final del script
+  ...dentro de caracterizacion_poligran.html, reemplazando el placeholder
+  que ya existe ahí para "HYC Drivers".
+
+  CONVENCIÓN DE NOMBRES (para que no choque con nada del archivo principal
+  al integrarlo): prefija TODO lo que crees — variables, funciones, ids de
+  canvas — con "drivers". Ejemplos: chartDriversHistorico,
+  pintarDrivers(), agregarDrivers(), #chart-drivers-modalidad. Ya lo dejé
+  así en los ejemplos de abajo, solo sigue el mismo patrón.
+
+  FUENTE DE DATOS: pestaña "Habitos_Consumo" del Google Sheets (ver
+  SHEET_ID abajo). Se acaba de arreglar en el notebook para que SÍ se
+  suba (antes no se subía) — columnas esperadas una vez corra Laura el
+  notebook actualizado:
+    LLAVE_PERIODO_CORREO, ID_DEL_ESTUDIANTE, SEMESTRE_INGRESO,
+    CORREO_INSTITUCIONAL, FECHA_ENCUESTA, SEMESTRE_ENCUESTA,
+    PROGRAMA, NIVEL_DE_FORMACION,
+    REGIONAL, SEDE, CONVENIO  (estas 3 solo si existen en Encuesta_hyc —
+      revisa el diagnóstico que imprime la Celda 8 del notebook),
+    PREGUNTA, RESPUESTA, PREGUNTA_HOMOLOGA, RESPUESTA_HOMOLOGA
+
+  Cada fila es UNA respuesta a UNA pregunta de un estudiante en un
+  periodo (formato "des-dinamizado" / unpivot — igual a como Power BI lo
+  tenía). Para armar una gráfica de una pregunta específica, filtra las
+  filas donde PREGUNTA_HOMOLOGA == "<texto de la pregunta>" y agrupa por
+  RESPUESTA_HOMOLOGA.
+
+  ⚠ IMPORTANTE: todavía no sabemos los valores exactos de PREGUNTA_HOMOLOGA
+  para "Modalidad", "Cómo conoció el Poli", "Por qué el Poli",
+  "Motivaciones", "Financiación", "Influencia en decisión" (los temas que
+  pide el docx para este módulo). Apenas tengas datos reales cargando,
+  imprime en la consola los valores únicos:
+    console.log([...new Set(filas.map(f => f.PREGUNTA_HOMOLOGA))])
+  y ahí identificas el texto exacto de cada pregunta que necesitas.
+
+  Según el mapeo (El_mapeo_fila-columna.xlsx) estas gráficas de HYC son de
+  BARRAS, comparando los ÚLTIMOS 2 PERIODOS (igual patrón que usamos en
+  General para Hijos/Cargo/Salarios — ver periodosComparablesGeneral() en
+  el archivo principal como referencia, aquí ya te dejo el equivalente).
+
+  Filtros esperados (según el docx): Regional, Sede, Nivel de formación,
+  Convenio, Programa — mismo patrón que General.
+  ============================================================
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+<style>
+  :root{
+    --azul-oscuro:#263a58;
+    --azul-claro:#22b2de;
+    --blanco:#ffffff;
+    --gris-fondo:#f4f6f9;
+    --gris-linea:#e1e6ec;
+    --texto:#1c2b3f;
+    --texto-suave:#5b6b80;
+    --amarillo:#f7b400;
+    --verde:#b1c900;
+    --magenta:#e4006d;
+    --celeste:#15bece;
+    --radio:10px;
+    --sombra:0 2px 10px rgba(38,58,88,0.08);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    background:var(--gris-fondo);
+    color:var(--texto);
+  }
+  header{
+    background:var(--azul-oscuro);
+    color:var(--blanco);
+    padding:18px 28px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    box-shadow:var(--sombra);
+  }
+  header .titulo{display:flex; align-items:center; gap:14px;}
+  header .titulo .barra{width:5px;height:34px;background:var(--azul-claro);border-radius:3px;}
+  header h1{font-size:1.15rem; margin:0; font-weight:600; letter-spacing:.2px;}
+  header .subtitulo{font-size:.78rem; color:#b9c4d6; margin-top:2px;}
+  header .fecha-actualizacion{font-size:.72rem; color:#9fb0c8; text-align:right;}
+  main{padding:22px 28px 60px;max-width:1400px;margin:0 auto;}
+
+  /* ---- Filtros ---- */
+  .barra-filtros{
+    display:flex; flex-wrap:wrap; gap:10px;
+    background:var(--blanco); padding:14px 16px; border-radius:var(--radio);
+    box-shadow:var(--sombra); margin-bottom:18px; align-items:flex-end;
+  }
+  .filtro{position:relative;min-width:170px;}
+  .filtro label{
+    display:block; font-size:.68rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.4px; color:var(--texto-suave); margin-bottom:4px;
+  }
+  .filtro-boton{
+    width:100%; text-align:left; background:var(--gris-fondo);
+    border:1px solid var(--gris-linea); border-radius:7px; padding:8px 10px;
+    font-size:.82rem; color:var(--texto); cursor:pointer;
+    display:flex; justify-content:space-between; align-items:center; gap:6px;
+  }
+  .filtro-boton .conteo{
+    background:var(--azul-claro); color:#fff; font-size:.66rem; font-weight:700;
+    border-radius:10px; padding:1px 7px; display:none;
+  }
+  .filtro-boton .conteo.visible{display:inline-block;}
+  .filtro-panel{
+    display:none; position:absolute; top:calc(100% + 4px); left:0;
+    background:var(--blanco); border:1px solid var(--gris-linea); border-radius:8px;
+    box-shadow:0 8px 24px rgba(38,58,88,0.18); width:260px; max-height:280px;
+    overflow-y:auto; z-index:100; padding:8px;
+  }
+  .filtro-panel.abierto{display:block;}
+  .filtro-panel .buscar{
+    width:100%; border:1px solid var(--gris-linea); border-radius:6px;
+    padding:6px 8px; font-size:.78rem; margin-bottom:6px;
+  }
+  .filtro-panel .acciones{
+    display:flex; justify-content:space-between; font-size:.68rem;
+    color:var(--azul-claro); margin-bottom:6px;
+  }
+  .filtro-panel .acciones span{cursor:pointer;font-weight:600;}
+  .filtro-opcion{
+    display:flex; align-items:center; gap:7px; padding:4px 4px;
+    font-size:.8rem; border-radius:5px; cursor:pointer;
+  }
+  .filtro-opcion:hover{background:var(--gris-fondo);}
+  .filtro-opcion input{accent-color:var(--azul-claro);}
+  .boton-limpiar{
+    background:var(--blanco); border:1px solid var(--gris-linea); border-radius:7px;
+    padding:8px 14px; font-size:.78rem; font-weight:600; color:var(--magenta);
+    cursor:pointer; height:37px;
+  }
+  .boton-limpiar:hover{background:#fff0f6;}
+
+  /* ---- KPIs ---- */
+  .fila-kpis{display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
+  .kpi{
+    background:var(--blanco); border-radius:var(--radio); box-shadow:var(--sombra);
+    padding:16px 20px; flex:1; min-width:150px; border-top:3px solid var(--azul-claro);
+  }
+  .kpi .valor{font-size:1.7rem;font-weight:700;color:var(--azul-oscuro);}
+  .kpi .etiqueta{font-size:.74rem;color:var(--texto-suave);margin-top:2px;}
+
+  /* ---- Grid de gráficas ---- */
+  .grid-graficas{display:grid; grid-template-columns:repeat(2, 1fr); gap:16px;}
+  .grid-graficas .ancho-completo{grid-column:1 / -1;}
+  .tarjeta-grafica{
+    background:var(--blanco); border-radius:var(--radio); box-shadow:var(--sombra);
+    padding:16px 18px 8px;
+  }
+  .tarjeta-grafica h3{font-size:.92rem;color:var(--azul-oscuro);margin:0 0 10px;font-weight:700;}
+  .tarjeta-grafica .lienzo-wrap{position:relative;height:280px;}
+  .tarjeta-grafica .lienzo-wrap.alto{height:380px;}
+
+  /* ---- Estados ---- */
+  .estado{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding:70px 20px; color:var(--texto-suave); text-align:center;
+  }
+  .estado .spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:4px solid var(--gris-linea); border-top-color:var(--azul-claro);
+    animation:girar .8s linear infinite;
+  }
+  @keyframes girar{to{transform:rotate(360deg);}}
+  .estado.error{color:var(--magenta);}
+
+  @media (max-width:800px){
+    .grid-graficas{grid-template-columns:1fr;}
+    main{padding:16px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="titulo">
+    <div class="barra"></div>
+    <div>
+      <h1>PLANTILLA — HYC Drivers</h1>
+      <div class="subtitulo">Prototipo aislado · se integra luego en caracterizacion_poligran.html</div>
+    </div>
+  </div>
+  <div class="fecha-actualizacion" id="fecha-actualizacion">Cargando datos…</div>
+</header>
+
+<main>
+
+  <!-- ============ HYC DRIVERS ============ -->
+  <!-- Al integrar: este <section> completo reemplaza el placeholder
+       <section id="tab-drivers"> en caracterizacion_poligran.html -->
+  <section id="tab-drivers">
+
+    <div class="barra-filtros" id="filtros-drivers">
+      <!-- los filtros (Regional, Sede, Nivel de formación, Convenio, Programa)
+           se generan por JS con crearMotorFiltros() -->
+    </div>
+
+    <div class="fila-kpis" id="kpis-drivers">
+      <div class="kpi"><div class="valor" id="kpi-drivers-total">—</div><div class="etiqueta">Encuestados (filtrado)</div></div>
+      <div class="kpi"><div class="valor" id="kpi-drivers-periodos">—</div><div class="etiqueta">Periodos con datos</div></div>
+    </div>
+
+    <div id="estado-drivers" class="estado">
+      <div class="spinner"></div>
+      <div>Cargando Habitos_Consumo desde Google Sheets…</div>
+    </div>
+
+    <div class="grid-graficas" id="graficas-drivers" style="display:none;">
+      <div class="tarjeta-grafica ancho-completo">
+        <h3>Histórico de encuestados por periodo</h3>
+        <div class="lienzo-wrap"><canvas id="chart-drivers-historico"></canvas></div>
+      </div>
+      <!--
+        Agrega aquí una <div class="tarjeta-grafica"> por cada pregunta:
+        Modalidad, Cómo conoció el Poli, Por qué el Poli, Motivaciones,
+        Financiación, Influencia en decisión. Copia el patrón de la de
+        arriba (o el de General en el archivo principal) para cada una.
+      -->
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* ============================================================
+   CONFIGURACIÓN — igual que en caracterizacion_poligran.html
+   ============================================================ */
+const SHEET_ID = '1UC56g8s-DlrNtINOde022n8ZQcaHrYT1V2BaDgUGcXE';
+
+// Si Habitos_Consumo resulta grande (probable, es des-dinamizada — puede
+// tener más filas que Banner_Detalle), gviz/tq puede devolver CSV corrupto
+// igual que nos pasó con Banner_Detalle y GENERAL. Si ves columnas con
+// datos pegados/mezclados en la consola, hay que sacar el gid real de la
+// pestaña (Archivo → compartir → o inspeccionando la URL del Sheets con la
+// pestaña abierta) y agregarlo aquí, como con las otras dos.
+const GIDS = {
+  'Banner_Detalle': '1888035612',
+  'GENERAL': '399457822'
+  // 'Habitos_Consumo': '...'   <- agregar cuando se sepa el gid
+};
+function urlHoja(nombrePestana){
+  const gid = GIDS[nombrePestana];
+  if(gid){
+    return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+  }
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(nombrePestana)}`;
+}
+
+const PALETA = {
+  azulOscuro:'#263a58', azulClaro:'#22b2de', amarillo:'#f7b400',
+  verde:'#b1c900', magenta:'#e4006d', celeste:'#15bece',
+  grisTexto:'#5b6b80'
+};
+const SECUENCIA_COLOR = [PALETA.azulOscuro, PALETA.magenta, PALETA.verde, PALETA.amarillo, PALETA.azulClaro, PALETA.celeste, '#8a94a6'];
+
+Chart.register(ChartDataLabels);
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+Chart.defaults.color = PALETA.grisTexto;
+
+/* ============================================================
+   MOTOR DE FILTROS REUTILIZABLE — copiado tal cual del archivo principal.
+   No lo modifiques; si necesitas algo distinto, es más seguro pedir el
+   cambio en el archivo principal para que ambos módulos se beneficien.
+   ============================================================ */
+function crearMotorFiltros({contenedor, campos, datos, onCambio}){
+  const seleccion = {};
+  campos.forEach(c => seleccion[c.clave] = new Set());
+  const refs = {};
+
+  function datosParaOpciones(claveExcluida){
+    const activos = campos.filter(c => c.clave !== claveExcluida && seleccion[c.clave].size > 0);
+    if(activos.length === 0) return datos;
+    return datos.filter(fila =>
+      activos.every(c => seleccion[c.clave].has((fila[c.clave] ?? '').toString().trim()))
+    );
+  }
+
+  function valoresUnicos(clave){
+    const base = datosParaOpciones(clave);
+    return Array.from(new Set(base.map(f => (f[clave] ?? '').toString().trim()).filter(v => v !== '')))
+      .sort((a,b)=>a.localeCompare(b,'es'));
+  }
+
+  function aplicarFiltros(){
+    const activos = campos.filter(c => seleccion[c.clave].size > 0);
+    const filtrados = datos.filter(fila =>
+      activos.every(c => seleccion[c.clave].has((fila[c.clave] ?? '').toString().trim()))
+    );
+    onCambio(filtrados);
+  }
+
+  function refrescarOpciones(claveQueCambio){
+    campos.forEach(campo => {
+      if(campo.clave === claveQueCambio) return;
+      const nuevasOpciones = valoresUnicos(campo.clave);
+      const nuevasSet = new Set(nuevasOpciones);
+      Array.from(seleccion[campo.clave]).forEach(v => {
+        if(!nuevasSet.has(v)) seleccion[campo.clave].delete(v);
+      });
+      refs[campo.clave].opciones = nuevasOpciones;
+      refs[campo.clave].pintarLista(refs[campo.clave].buscar.value);
+      refs[campo.clave].actualizarBoton();
+    });
+  }
+
+  contenedor.innerHTML = '';
+  campos.forEach(campo => {
+    const wrap = document.createElement('div');
+    wrap.className = 'filtro';
+    wrap.innerHTML = `
+      <label>${campo.etiqueta}</label>
+      <button type="button" class="filtro-boton">
+        <span class="texto-boton">Todos</span>
+        <span class="conteo"></span>
+      </button>
+      <div class="filtro-panel">
+        <input type="text" class="buscar" placeholder="Buscar...">
+        <div class="acciones"><span class="marcar-todos">Marcar todos</span><span class="limpiar">Limpiar</span></div>
+        <div class="lista-opciones"></div>
+      </div>`;
+    contenedor.appendChild(wrap);
+
+    const boton = wrap.querySelector('.filtro-boton');
+    const panel = wrap.querySelector('.filtro-panel');
+    const lista = wrap.querySelector('.lista-opciones');
+    const textoBoton = wrap.querySelector('.texto-boton');
+    const conteo = wrap.querySelector('.conteo');
+    const buscar = wrap.querySelector('.buscar');
+
+    function pintarLista(filtroTexto=''){
+      lista.innerHTML = '';
+      refs[campo.clave].opciones
+        .filter(op => op.toLowerCase().includes(filtroTexto.toLowerCase()))
+        .forEach(op => {
+          const id = campo.clave + '-' + op.replace(/[^a-zA-Z0-9]/g,'_');
+          const fila = document.createElement('label');
+          fila.className = 'filtro-opcion';
+          fila.innerHTML = `<input type="checkbox" id="${id}" ${seleccion[campo.clave].has(op)?'checked':''}> <span>${op}</span>`;
+          fila.querySelector('input').addEventListener('change', e => {
+            if(e.target.checked) seleccion[campo.clave].add(op);
+            else seleccion[campo.clave].delete(op);
+            actualizarBoton();
+            refrescarOpciones(campo.clave);
+            aplicarFiltros();
+          });
+          lista.appendChild(fila);
+        });
+    }
+
+    function actualizarBoton(){
+      const n = seleccion[campo.clave].size;
+      if(n === 0){ textoBoton.textContent = 'Todos'; conteo.classList.remove('visible'); }
+      else { textoBoton.textContent = n === 1 ? Array.from(seleccion[campo.clave])[0] : `${n} seleccionados`; conteo.textContent = n; conteo.classList.add('visible'); }
+    }
+
+    refs[campo.clave] = {opciones: valoresUnicos(campo.clave), pintarLista, actualizarBoton, buscar};
+
+    boton.addEventListener('click', () => {
+      document.querySelectorAll('.filtro-panel.abierto').forEach(p => { if(p !== panel) p.classList.remove('abierto'); });
+      panel.classList.toggle('abierto');
+    });
+    buscar.addEventListener('input', e => pintarLista(e.target.value));
+    wrap.querySelector('.marcar-todos').addEventListener('click', () => {
+      refs[campo.clave].opciones.forEach(op => seleccion[campo.clave].add(op));
+      pintarLista(buscar.value); actualizarBoton(); refrescarOpciones(campo.clave); aplicarFiltros();
+    });
+    wrap.querySelector('.limpiar').addEventListener('click', () => {
+      seleccion[campo.clave].clear();
+      pintarLista(buscar.value); actualizarBoton(); refrescarOpciones(campo.clave); aplicarFiltros();
+    });
+
+    pintarLista();
+  });
+
+  document.addEventListener('click', e => {
+    if(!e.target.closest('.filtro')) document.querySelectorAll('.filtro-panel.abierto').forEach(p => p.classList.remove('abierto'));
+  });
+
+  const botonLimpiar = document.createElement('button');
+  botonLimpiar.className = 'boton-limpiar';
+  botonLimpiar.textContent = 'Limpiar filtros';
+  botonLimpiar.addEventListener('click', () => {
+    campos.forEach(c => seleccion[c.clave].clear());
+    crearMotorFiltros({contenedor, campos, datos, onCambio});
+    onCambio(datos);
+  });
+  contenedor.appendChild(botonLimpiar);
+}
+
+/* ============================================================
+   HELPERS REUTILIZABLES — copiados del archivo principal.
+   ============================================================ */
+function ordenarCategorias(presentes, ordenPreferido){
+  const enOrden = ordenPreferido.filter(c => presentes.has(c));
+  const extra = Array.from(presentes).filter(c => !ordenPreferido.includes(c)).sort();
+  return [...enOrden, ...extra];
+}
+
+function datasetsApilados(porPeriodo, periodos, campo, ordenPreferido, colorPorCategoria={}){
+  const categoriasPresentes = new Set();
+  periodos.forEach(p => Object.keys(porPeriodo[p][campo]).forEach(c => categoriasPresentes.add(c)));
+  const categorias = ordenarCategorias(categoriasPresentes, ordenPreferido);
+  return categorias.map((cat, i) => ({
+    label: cat,
+    data: periodos.map(p => {
+      const reg = porPeriodo[p];
+      const total = reg.total || 1;
+      return +((reg[campo][cat]||0)/total*100).toFixed(1);
+    }),
+    backgroundColor: colorPorCategoria[cat] || SECUENCIA_COLOR[i % SECUENCIA_COLOR.length]
+  }));
+}
+
+function actualizarLinea(idCanvas, asignar, actual, labels, data, etiqueta, opts={}){
+  if(actual) actual.destroy();
+  const c = new Chart(document.getElementById(idCanvas), {
+    type:'line',
+    data:{labels, datasets:[{label:etiqueta, data, borderColor:PALETA.azulClaro, backgroundColor:PALETA.azulClaro+'33', fill:true, tension:.3}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        datalabels:{align:'top', anchor:'end', color:PALETA.azulOscuro, font:{size:10,weight:'600'},
+          formatter:v => opts.enteros ? Number(v).toLocaleString('es-CO') : v}}}
+  });
+  asignar(c);
+}
+
+function actualizarApilada(idCanvas, asignar, actual, periodos, datasets){
+  if(actual) actual.destroy();
+  const c = new Chart(document.getElementById(idCanvas), {
+    type:'bar',
+    data:{labels:periodos, datasets},
+    options:{responsive:true, maintainAspectRatio:false,
+      scales:{x:{stacked:true}, y:{stacked:true, max:100, ticks:{callback:v=>v+'%'}}},
+      plugins:{
+        legend:{position:'bottom', labels:{boxWidth:12,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}},
+        datalabels:{color:'#fff', font:{size:9,weight:'600'}, formatter:v=>v>=5?v+'%':''}
+      }}
+  });
+  asignar(c);
+}
+
+// Comparación de 2 periodos (último + mismo semestre año anterior) —
+// mismo patrón que periodosComparablesGeneral() en el archivo principal.
+function periodosComparablesDrivers(periodosDisponibles){
+  if(periodosDisponibles.length === 0) return [];
+  const ultimo = periodosDisponibles[periodosDisponibles.length - 1];
+  const [anio, sem] = ultimo.split('-');
+  const anterior = `${Number(anio) - 1}-${sem}`;
+  return periodosDisponibles.includes(anterior) ? [anterior, ultimo] : [ultimo];
+}
+
+function actualizarComparableVertical(idCanvas, asignar, actual, categorias, datasets){
+  if(actual) actual.destroy();
+  const c = new Chart(document.getElementById(idCanvas), {
+    type:'bar',
+    data:{labels:categorias, datasets},
+    options:{responsive:true, maintainAspectRatio:false,
+      scales:{y:{max:100, ticks:{callback:v=>v+'%'}}},
+      plugins:{
+        legend:{position:'bottom', labels:{boxWidth:12,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}},
+        datalabels:{color:PALETA.azulOscuro, anchor:'end', align:'top', font:{size:9,weight:'600'}, formatter:v=>v>=3?v+'%':''}
+      }}
+  });
+  asignar(c);
+}
+
+/* ============================================================
+   ⬇⬇⬇ TU MÓDULO EMPIEZA AQUÍ ⬇⬇⬇
+   Sigue el patrón de pintarGeneral()/agregarGeneral() del archivo
+   principal (caracterizacion_poligran.html) como referencia — ahí ya está
+   resuelto el caso de "% apilado en todos los periodos" (Estrato,
+   ¿Trabaja?) y "comparación de 2 periodos" (Hijos, Cargo, Salarios), que
+   es exactamente lo que necesitas aquí para Modalidad/Cómo conoció el
+   Poli/etc. (barras, últimos 2 periodos, según el xlsx de mapeo).
+   ============================================================ */
+let chartDriversHistorico; // agrega aquí el resto de tus variables de charts
+
+function ordenarPeriodosDrivers(periodos){
+  // Habitos_Consumo usa SEMESTRE_ENCUESTA, formato 'YYYYS' sin guion
+  // (ej. '20261') -- confirmar esto apenas tengas datos reales, revisando
+  // la columna SEMESTRE_ENCUESTA en la consola.
+  return Array.from(new Set(periodos)).sort((a,b)=>Number(a)-Number(b));
+}
+
+// TODO: escribe aquí agregarDrivers(filas, periodos) — un solo recorrido
+// de las filas filtradas que construya, por periodo, los conteos que
+// necesites por PREGUNTA_HOMOLOGA/RESPUESTA_HOMOLOGA. Recuerda: cada fila
+// de Habitos_Consumo es una respuesta a una sola pregunta, así que para el
+// histórico de encuestados necesitas contar ESTUDIANTES ÚNICOS por
+// periodo (usa un Set de LLAVE_PERIODO_CORREO o ID_DEL_ESTUDIANTE), no
+// filas.length (eso contaría de más, una vez por cada pregunta respondida).
+
+function pintarDrivers(filas){
+  // TODO: implementar. Como referencia mínima, esto ya deja funcionando
+  // el histórico de encuestados (estudiantes únicos por periodo):
+  const porPeriodo = {};
+  filas.forEach(f => {
+    const p = f.SEMESTRE_ENCUESTA;
+    if(!porPeriodo[p]) porPeriodo[p] = new Set();
+    porPeriodo[p].add(f.LLAVE_PERIODO_CORREO);
+  });
+  const periodos = ordenarPeriodosDrivers(Object.keys(porPeriodo));
+
+  document.getElementById('kpi-drivers-total').textContent =
+    new Set(filas.map(f => f.LLAVE_PERIODO_CORREO)).size.toLocaleString('es-CO');
+  document.getElementById('kpi-drivers-periodos').textContent = periodos.length;
+
+  actualizarLinea('chart-drivers-historico', c => chartDriversHistorico = c, chartDriversHistorico,
+    periodos, periodos.map(p => porPeriodo[p].size), 'Encuestados', {enteros:true});
+
+  // TODO: agrega aquí el resto de tus gráficas (Modalidad, Cómo conoció
+  // el Poli, Por qué el Poli, Motivaciones, Financiación, Influencia en
+  // decisión), usando periodosComparablesDrivers() + actualizarComparableVertical()
+  // igual que Hijos/Cargo/Salarios en General.
+
+  document.getElementById('estado-drivers').style.display = 'none';
+  document.getElementById('graficas-drivers').style.display = '';
+}
+
+/* ============================================================
+   ⬆⬆⬆ TU MÓDULO TERMINA AQUÍ ⬆⬆⬆
+   ============================================================ */
+
+/* ============================================================
+   CARGA DE DATOS
+   ============================================================ */
+fetch(urlHoja('Habitos_Consumo'))
+  .then(resp => {
+    if(!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText} — revisa los permisos de compartir del Sheets`);
+    return resp.text();
+  })
+  .then(csvTexto => {
+    if(csvTexto.trim().startsWith('<')){
+      throw new Error('La respuesta no es un CSV válido — probablemente el Sheets no está compartido como "Cualquiera con el enlace puede ver", o el nombre de la pestaña "Habitos_Consumo" no coincide exactamente.');
+    }
+    const resultado = Papa.parse(csvTexto, {header:true, skipEmptyLines:true, delimiter:','});
+    const filas = resultado.data;
+    console.log('[Habitos_Consumo] Columnas detectadas:', Object.keys(filas[0] || {}));
+    console.log('[Habitos_Consumo] Primera fila:', filas[0]);
+    console.log('[Habitos_Consumo] Valores únicos de PREGUNTA_HOMOLOGA:', [...new Set(filas.map(f => f.PREGUNTA_HOMOLOGA))]);
+
+    if(filas.length === 0){
+      throw new Error('La pestaña Habitos_Consumo no tiene filas de datos todavía. Puede ser que el notebook no se haya corrido después del FIX que agregó la subida de esta pestaña.');
+    }
+    // FIX: cuando la pestaña pedida no existe, gviz/tq NO siempre devuelve
+    // un error limpio — a veces devuelve en silencio el CSV de OTRA pestaña
+    // del mismo Sheets (ej. 'KPIs') en vez de 'Habitos_Consumo'. Sin este
+    // chequeo, el módulo mostraba "datos" que en realidad eran de otra
+    // pestaña, sin ningún aviso. Se valida que exista al menos una de las
+    // columnas que Habitos_Consumo debería tener sí o sí.
+    const columnasEsperadas = ['PREGUNTA_HOMOLOGA', 'RESPUESTA_HOMOLOGA', 'LLAVE_PERIODO_CORREO'];
+    const columnasReales = Object.keys(filas[0] || {});
+    if(!columnasEsperadas.some(c => columnasReales.includes(c))){
+      throw new Error(`Los datos recibidos no parecen ser de Habitos_Consumo (columnas encontradas: ${columnasReales.join(', ')}). Es probable que la pestaña "Habitos_Consumo" todavía no exista en el Sheets — revisa que el notebook ya se haya corrido con el FIX que agrega su subida.`);
+    }
+
+    document.getElementById('fecha-actualizacion').textContent = 'Datos cargados: ' + filas.length.toLocaleString('es-CO') + ' registros';
+
+    crearMotorFiltros({
+      contenedor: document.getElementById('filtros-drivers'),
+      campos: [
+        {clave:'REGIONAL', etiqueta:'Regional'},
+        {clave:'SEDE', etiqueta:'Sede'},
+        {clave:'NIVEL_DE_FORMACION', etiqueta:'Nivel de formación'},
+        {clave:'CONVENIO', etiqueta:'Convenio'},
+        {clave:'PROGRAMA', etiqueta:'Programa'}
+      ],
+      datos: filas,
+      onCambio: pintarDrivers
+    });
+
+    pintarDrivers(filas);
+  })
+  .catch(err => {
+    document.getElementById('estado-drivers').innerHTML = `
+      <div style="font-size:2rem;">⚠</div>
+      <div><strong>No se pudo cargar Habitos_Consumo.</strong></div>
+      <div style="font-size:.82rem;max-width:460px;">${err.message}</div>`;
+    document.getElementById('estado-drivers').classList.add('error');
+    console.error(err);
+  });
+</script>
+</body>
+</html>
