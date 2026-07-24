@@ -3,58 +3,168 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PLANTILLA · HYC Drivers · Caracterización Estudiantil</title>
+<title>PLANTILLA · HYC (Drivers / Hábitos / Canales) · Caracterización Estudiantil</title>
 <!--
   ============================================================
-  PLANTILLA DE TRABAJO — módulo HYC Drivers
+  PLANTILLA DE TRABAJO — módulos HYC Drivers / HYC Hábitos / HYC Canales
   ============================================================
-  Este archivo es un punto de partida AISLADO para construir el módulo
-  "HYC Drivers" sin tocar caracterizacion_poligran.html (el dashboard
-  principal). Cuando el módulo esté listo, se copia:
-    1. El <section id="tab-drivers"> completo (abajo, en <body>)
-    2. Las funciones JS de tu módulo (bloque "TU MÓDULO EMPIEZA AQUÍ")
-    3. El fetch('Habitos_Consumo') al final del script
+  Reemplaza a plantilla_modulo_hyc_drivers.html (esa quedó desactualizada:
+  no tenía SEDE/REGIONAL/RANGO_ETARIO de Banner, y tenía el bug de
+  PREGUNTA_HOMOLOGA desalineada de la Celda 9, ya corregido en el
+  notebook). Este archivo es un punto de partida AISLADO para construir
+  los 3 módulos sin tocar caracterizacion_poligran.html (el dashboard
+  principal). Cuando cada módulo esté listo, se copia:
+    1. El <section id="tab-drivers"> / #tab-habitos / #tab-canales completo
+    2. Las funciones JS de ese módulo (bloques "TU MÓDULO EMPIEZA AQUÍ")
+    3. El botón de esa pestaña en <nav class="tabs">
   ...dentro de caracterizacion_poligran.html, reemplazando el placeholder
-  que ya existe ahí para "HYC Drivers".
+  que ya existe ahí para cada pestaña. El fetch('Habitos_Consumo') y el
+  motor de filtros son COMPARTIDOS por los 3 módulos (misma fuente, mismos
+  5 filtros) — se copian una sola vez, no por módulo.
 
-  CONVENCIÓN DE NOMBRES (para que no choque con nada del archivo principal
-  al integrarlo): prefija TODO lo que crees — variables, funciones, ids de
-  canvas — con "drivers". Ejemplos: chartDriversHistorico,
-  pintarDrivers(), agregarDrivers(), #chart-drivers-modalidad. Ya lo dejé
-  así en los ejemplos de abajo, solo sigue el mismo patrón.
+  CONVENCIÓN DE NOMBRES: prefija TODO lo que crees — variables, funciones,
+  ids de canvas — con el nombre corto del módulo: "drivers", "habitos",
+  "canales". Ejemplos: chartDriversModalidad, pintarDrivers(),
+  #chart-habitos-deporte, #chart-canales-medios.
 
-  FUENTE DE DATOS: pestaña "Habitos_Consumo" del Google Sheets (ver
-  SHEET_ID abajo). Se acaba de arreglar en el notebook para que SÍ se
-  suba (antes no se subía) — columnas esperadas una vez corra Laura el
-  notebook actualizado:
-    LLAVE_PERIODO_CORREO, ID_DEL_ESTUDIANTE, SEMESTRE_INGRESO,
+  FUENTE DE DATOS: pestaña "Habitos_Consumo" del Google Sheets SEPARADO de
+  HYC (ver SHEET_ID_HYC abajo). Columnas esperadas (confirmadas con datos
+  reales del notebook actualizado):
+    LLAVE_PERIODO_CORREO, ID_ESTUDIANTE, SEMESTRE_INGRESO,
     CORREO_INSTITUCIONAL, FECHA_ENCUESTA, SEMESTRE_ENCUESTA,
-    PROGRAMA, NIVEL_DE_FORMACION,
-    REGIONAL, SEDE, CONVENIO  (estas 3 solo si existen en Encuesta_hyc —
-      revisa el diagnóstico que imprime la Celda 8 del notebook),
-    PREGUNTA, RESPUESTA, PREGUNTA_HOMOLOGA, RESPUESTA_HOMOLOGA
+    PERIODO,        <- NUEVO: de Banner (formato 'YYYY-S' con guion, como GENERAL)
+    PROGRAMA,       <- de Banner (ya no autorreportado)
+    NIVEL_DE_FORMACION,  <- de Banner (ya no autorreportado)
+    SEDE,           <- de Banner. En las capturas de Power BI el filtro se
+                       llama "Modalidad" (Bogotá/Medellín/Virtual) pero es
+                       EL MISMO campo que SEDE en Banner/GENERAL — usa este
+                       campo, solo cambia la etiqueta visible a "Modalidad"
+                       si quieres calzar con las capturas.
+    REGIONAL,       <- de Banner (vía cruce con Municipios_DANE)
+    RANGO_ETARIO,   <- de Banner. Solo lo necesita HYC Canales (rangos
+                       etarios por uso de medio) — Drivers/Hábitos pueden
+                       ignorarlo.
+    CONVENIO,       <- SOLO si existe en Encuesta_hyc (autorreportado, no
+                       se cruza con Banner) — revisa el diagnóstico que
+                       imprime la Celda 8 del notebook.
+    PREGUNTA, RESPUESTA, PREGUNTA_HOMOLOGA, LLAVE_RESPUESTA, RESPUESTA_HOMOLOGA
 
   Cada fila es UNA respuesta a UNA pregunta de un estudiante en un
-  periodo (formato "des-dinamizado" / unpivot — igual a como Power BI lo
-  tenía). Para armar una gráfica de una pregunta específica, filtra las
-  filas donde PREGUNTA_HOMOLOGA == "<texto de la pregunta>" y agrupa por
+  periodo (formato "des-dinamizado" / unpivot). Para una gráfica de una
+  pregunta específica: filtra filas donde
+  PREGUNTA_HOMOLOGA === "<texto exacto de la pregunta>" y agrupa por
   RESPUESTA_HOMOLOGA.
 
-  ⚠ IMPORTANTE: todavía no sabemos los valores exactos de PREGUNTA_HOMOLOGA
-  para "Modalidad", "Cómo conoció el Poli", "Por qué el Poli",
-  "Motivaciones", "Financiación", "Influencia en decisión" (los temas que
-  pide el docx para este módulo). Apenas tengas datos reales cargando,
-  imprime en la consola los valores únicos:
+  ⚠ IMPORTANTE: apenas tengas datos reales cargando, imprime en consola:
     console.log([...new Set(filas.map(f => f.PREGUNTA_HOMOLOGA))])
-  y ahí identificas el texto exacto de cada pregunta que necesitas.
+  para confirmar el texto EXACTO de cada pregunta (mayúsculas/acentos/
+  signos deben calzar exacto con lo que uses en el filtro).
 
-  Según el mapeo (El_mapeo_fila-columna.xlsx) estas gráficas de HYC son de
-  BARRAS, comparando los ÚLTIMOS 2 PERIODOS (igual patrón que usamos en
-  General para Hijos/Cargo/Salarios — ver periodosComparablesGeneral() en
-  el archivo principal como referencia, aquí ya te dejo el equivalente).
+  ============================================================
+  LAS 6 GRÁFICAS DE HYC DRIVERS (vistas en VISTAS HYC.docx, captura 1)
+  ============================================================
+  KPI único: "Encuestados <último periodo>: N" (no 3 KPIs como en General)
+  1. Histórico de encuestados por periodo (línea) — ya viene resuelto abajo
+  2. "¿Por qué escogió la modalidad?" — barras horizontales, 2 periodos.
+     Categorías vistas: Flexibilidad Horaria, Trabajar y Estudiar, Ahorro
+     en Costos, Hábitos de Estudio, Comodidad, Contacto Docente, Trato
+     Personal, Calidad es Igual
+  3. "¿Cómo conoció los programas del Poli?" — barras horizontales, 2 periodos.
+     Categorías: Búsqueda en internet, Voz a voz (Referidos), Redes
+     Sociales, Convenios, Campus/CSU, Ferias y Eventos, Otro
+  4. "¿Por qué escogió el Poli?" — barras verticales, 2 periodos.
+     Categorías: Recomendación, Flexibilidad, Calidad Académica, Precio,
+     Homologación, Reconocimiento y Prestigio, Oferta de Programas,
+     Convenios, Experiencia y Liderazgo en Virtualidad
+  5. "Aspectos importantes en la elección de una carrera" — barras
+     verticales, 2 periodos. OJO: se ve MUY parecida a la #4 pero con %
+     ligeramente distintos — son 2 preguntas homólogas DISTINTAS (revisar
+     Homologo_preguntas: hay variantes pregrado/posgrado de preguntas
+     similares, ej. POR_QUE_ESCOGIO_AL_POLI vs
+     POR_QUE_ELIGIO_ESTUDIAR_EL_PROGRAMA_CARRERA_EN_EL_POLI vs
+     CUALES_SON_SUS_MOTIVACIONES_PERSONALES_PARA_ESTUDIAR_LA_CARRERA) — no
+     asumir que son la misma, confirmar con PREGUNTA_HOMOLOGA real.
+  6. "¿Cómo financias tus estudios?" — pie/dona (categorías con % fijo, NO
+     comparación de 2 periodos, es solo el último periodo). Categorías:
+     De Contado (Salario), Cesantías, Padres O Familiares, Credipoli, Beca
+     o Subsidios, Crédito con Terceros, Tarjeta De Crédito, ICETEX
+  7. "¿Quién influyó en su decisión de estudiar?" — pie/dona, último
+     periodo. Categorías: Padres, Pareja, Coworkers, Amigos, Estudiantes
+     Poli, Otros Familiares, Otros, Profesores
 
-  Filtros esperados (según el docx): Regional, Sede, Nivel de formación,
-  Convenio, Programa — mismo patrón que General.
+  ============================================================
+  LAS 7 GRÁFICAS DE HYC HÁBITOS (captura 2)
+  ============================================================
+  1. Histórico de encuestados (igual a Drivers)
+  2. "¿Qué otra IES consideró?" — barras verticales, 3 PERIODOS (no 2):
+     2024-1, 2024-2, 2025-1 → hoy sería el equivalente a los 3 periodos
+     más recientes disponibles. Categorías: UNIMINUTO, UNAD, NINGUNA,
+     SENA, ÁREA ANDINA, UNIVERSIDAD NACIONAL, OTRAS, CUN
+  3. "¿Qué medios de transporte utiliza?" — barras verticales, 3 periodos.
+     Categorías: Público, Moto, A pie, Automóvil, Plataformas de
+     Transporte, Bicicleta, Patineta Eléctrica, Otro
+  4. "¿Qué hace en su tiempo libre?" — barras horizontales, 2 periodos.
+     Categorías: Tiempo en Familia, Escuchar Música, Salir De Viaje, Ver
+     Televisión, Lectura, Salir con Amigos, Practicar Deporte, Ir al
+     Gimnasio
+  5. "¿Qué deporte practica?" — barras horizontales. OJO: en la captura el
+     legend dice "2024-1"/"2024-2" (no 2025-1) — confirmar con datos
+     reales cuál es el par correcto, puede ser un detalle desactualizado
+     de la captura. Categorías: Gimnasio, Caminata, No practica, Fútbol
+     (5,8 u 11), Ejercicios en casa, Bici o ciclismo, Atletismo, Voleibol
+  6. "¿Qué le gustaría estudiar en Ed. Continua?" — barras horizontales, 2
+     periodos. Categorías: Idiomas, Administración, Marketing, Habilidades
+     blandas, Finanzas, Artes y creatividad, TIC, Programación, Salud
+  7. "¿Qué contenido consume en Youtube?" — barras verticales, 2 periodos.
+     Categorías: Música, Tutoriales, Educativo, Entretenimiento, Noticias,
+     Comedia, Estilo de vida, Deporte, Videojuegos, Viajes, Política,
+     Shorts, En vivo
+
+  ============================================================
+  LAS ~19 GRÁFICAS DE HYC CANALES (captura 3 — el módulo más grande)
+  ============================================================
+  1. Histórico de encuestados (igual a los otros 2)
+  2. "Redes sociales" — barras verticales, 3 PERIODOS (2024-1/2024-2/2025-1).
+     Categorías: Whatsapp, Instagram, Facebook, Tik Tok, Youtube,
+     Pinterest, Linkedin, Twitter (X), Telegram
+  3. "Medios" — barras horizontales, 2 periodos. Categorías: Internet,
+     Redes Sociales, Pódcast, Televisión, Streaming, Radio, Periódicos o
+     revistas, Ninguno
+  4. "Frecuencia uso de dispositivo" — barras 100% apiladas (NO comparación
+     de periodos, es 1 sola serie): categorías eje X = Casi Nunca /
+     Celular / TV / Portátil, apilado por franja de frecuencia (Casi
+     Siempre / degradado de colores). Necesita más investigación de la
+     estructura real de la pregunta.
+  5. "Plataformas de Streaming de pago" — barras verticales, 2 periodos.
+     Categorías: Netflix, Spotify, Youtube, Disney Plus, Amazon Prime, Hbo
+     Max, Otro, Win Sport+
+  6. "Canales de Televisión" — barras verticales, 2 periodos. Categorías:
+     Caracol, RCN, No Ve Tv, Citytv, Discovery, Espn, History Channel,
+     Canales De Noticias
+  7. "Emisoras de Radio" — barras verticales, 2 periodos. Categorías:
+     Ninguno, Blu Radio, Olímpica Stereo, La Mega, Caracol Radio, Los 40
+     Principales, Rcn Radio, Tropicana
+  8. "Periódicos y revistas" — barras verticales, 2 periodos. Categorías:
+     El Tiempo, No lee periódicos, El Espectador, Semana, Q'Hubo, El
+     Colombiano, El País, Pulzo
+  9. "Servicios de Streaming de Audio" — barras verticales, 1 periodo
+     (solo 2025-1 en la captura). Categorías: Youtube, Spotify, Otro,
+     Apple Music, Ninguna, Shazam, Amazon Music, Deezer, Tidal
+  10. "Rangos etarios por uso de medio" — 8 mini-gráficas de barras (una
+      por canal: Caracol, RCN, City TV, No ve TV, Blu Radio, La Mega,
+      Olímpica, No escucha Radio), eje X = rango etario (15-19, 20-24,
+      25-29, 30-34, 35-39, 40-44, 45 o mas), 1 sola serie (no comparación
+      de periodos). Necesita RANGO_ETARIO (ya viene de Banner) cruzado con
+      RESPUESTA_HOMOLOGA de la pregunta de canal de TV/Radio preferido.
+
+  Filtros (todas las 3 vistas, confirmados en las capturas): Regional,
+  Sede (etiquetado "Modalidad" en las capturas — mismo campo SEDE),
+  Nivel de formación, Convenio Simple, Programa.
+
+  Comparación de periodos: última + mismo semestre del año anterior
+  (confirmado explícitamente por el usuario: hoy equivale a 2026-1 y
+  2025-1) — usa periodosComparablesHyc() de abajo, NO hardcodees los
+  strings "2026-1"/"2025-1", para que se actualice solo cada semestre.
   ============================================================
 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
@@ -97,7 +207,22 @@
   header h1{font-size:1.15rem; margin:0; font-weight:600; letter-spacing:.2px;}
   header .subtitulo{font-size:.78rem; color:#b9c4d6; margin-top:2px;}
   header .fecha-actualizacion{font-size:.72rem; color:#9fb0c8; text-align:right;}
+  nav.tabs{
+    background:var(--blanco); display:flex; gap:4px; padding:0 20px;
+    border-bottom:1px solid var(--gris-linea); overflow-x:auto;
+    position:sticky; top:0; z-index:50;
+  }
+  nav.tabs button{
+    border:none; background:transparent; padding:14px 18px; font-size:.88rem;
+    font-weight:600; color:var(--texto-suave); cursor:pointer;
+    border-bottom:3px solid transparent; white-space:nowrap;
+    transition:color .15s, border-color .15s;
+  }
+  nav.tabs button:hover{color:var(--azul-oscuro);}
+  nav.tabs button.activo{color:var(--azul-oscuro); border-bottom-color:var(--azul-claro);}
   main{padding:22px 28px 60px;max-width:1400px;margin:0 auto;}
+  .tab-panel{display:none;}
+  .tab-panel.activo{display:block;}
 
   /* ---- Filtros ---- */
   .barra-filtros{
@@ -150,17 +275,18 @@
   }
   .boton-limpiar:hover{background:#fff0f6;}
 
-  /* ---- KPIs ---- */
-  .fila-kpis{display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
-  .kpi{
+  /* ---- KPI único (estilo de las capturas de Power BI: un solo número) ---- */
+  .kpi-unico{
+    display:inline-flex; flex-direction:column; align-items:center;
     background:var(--blanco); border-radius:var(--radio); box-shadow:var(--sombra);
-    padding:16px 20px; flex:1; min-width:150px; border-top:3px solid var(--azul-claro);
+    padding:10px 24px; margin-bottom:18px; border-top:3px solid var(--azul-claro);
   }
-  .kpi .valor{font-size:1.7rem;font-weight:700;color:var(--azul-oscuro);}
-  .kpi .etiqueta{font-size:.74rem;color:var(--texto-suave);margin-top:2px;}
+  .kpi-unico .valor{font-size:1.6rem;font-weight:700;color:var(--azul-oscuro);}
+  .kpi-unico .etiqueta{font-size:.72rem;color:var(--texto-suave);}
 
   /* ---- Grid de gráficas ---- */
   .grid-graficas{display:grid; grid-template-columns:repeat(2, 1fr); gap:16px;}
+  .grid-graficas.tres-col{grid-template-columns:repeat(3, 1fr);}
   .grid-graficas .ancho-completo{grid-column:1 / -1;}
   .tarjeta-grafica{
     background:var(--blanco); border-radius:var(--radio); box-shadow:var(--sombra);
@@ -169,6 +295,13 @@
   .tarjeta-grafica h3{font-size:.92rem;color:var(--azul-oscuro);margin:0 0 10px;font-weight:700;}
   .tarjeta-grafica .lienzo-wrap{position:relative;height:280px;}
   .tarjeta-grafica .lienzo-wrap.alto{height:380px;}
+  .tarjeta-grafica .lienzo-wrap.bajo{height:200px;}
+
+  .placeholder-todo{
+    background:repeating-linear-gradient(45deg, #fff, #fff 10px, #fbfcfe 10px, #fbfcfe 20px);
+    border:2px dashed var(--gris-linea); border-radius:var(--radio);
+    padding:20px; text-align:center; color:var(--texto-suave); font-size:.8rem;
+  }
 
   /* ---- Estados ---- */
   .estado{
@@ -184,7 +317,7 @@
   .estado.error{color:var(--magenta);}
 
   @media (max-width:800px){
-    .grid-graficas{grid-template-columns:1fr;}
+    .grid-graficas, .grid-graficas.tres-col{grid-template-columns:1fr;}
     main{padding:16px;}
   }
 </style>
@@ -195,74 +328,150 @@
   <div class="titulo">
     <div class="barra"></div>
     <div>
-      <h1>PLANTILLA — HYC Drivers</h1>
+      <h1>PLANTILLA — HYC Drivers / Hábitos / Canales</h1>
       <div class="subtitulo">Prototipo aislado · se integra luego en caracterizacion_poligran.html</div>
     </div>
   </div>
   <div class="fecha-actualizacion" id="fecha-actualizacion">Cargando datos…</div>
 </header>
 
+<nav class="tabs" id="tabs-nav">
+  <button data-tab="drivers" class="activo">HYC Drivers</button>
+  <button data-tab="habitos">HYC Hábitos</button>
+  <button data-tab="canales">HYC Canales</button>
+</nav>
+
 <main>
 
-  <!-- ============ HYC DRIVERS ============ -->
-  <!-- Al integrar: este <section> completo reemplaza el placeholder
-       <section id="tab-drivers"> en caracterizacion_poligran.html -->
-  <section id="tab-drivers">
+  <!-- Filtros y KPI compartidos por los 3 módulos (misma fuente de datos) -->
+  <div class="barra-filtros" id="filtros-hyc">
+    <!-- Regional, Sede, Nivel de formación, Convenio, Programa — crearMotorFiltros() -->
+  </div>
+  <div class="kpi-unico" id="kpi-hyc-encuestados">
+    <div class="valor" id="kpi-hyc-valor">—</div>
+    <div class="etiqueta" id="kpi-hyc-etiqueta">Encuestados</div>
+  </div>
 
-    <div class="barra-filtros" id="filtros-drivers">
-      <!-- los filtros (Regional, Sede, Nivel de formación, Convenio, Programa)
-           se generan por JS con crearMotorFiltros() -->
-    </div>
+  <div id="estado-hyc" class="estado">
+    <div class="spinner"></div>
+    <div>Cargando Habitos_Consumo desde Google Sheets…</div>
+  </div>
 
-    <div class="fila-kpis" id="kpis-drivers">
-      <div class="kpi"><div class="valor" id="kpi-drivers-total">—</div><div class="etiqueta">Encuestados (filtrado)</div></div>
-      <div class="kpi"><div class="valor" id="kpi-drivers-periodos">—</div><div class="etiqueta">Periodos con datos</div></div>
-    </div>
+  <div id="contenido-hyc" style="display:none;">
 
-    <div id="estado-drivers" class="estado">
-      <div class="spinner"></div>
-      <div>Cargando Habitos_Consumo desde Google Sheets…</div>
-    </div>
-
-    <div class="grid-graficas" id="graficas-drivers" style="display:none;">
-      <div class="tarjeta-grafica ancho-completo">
-        <h3>Histórico de encuestados por periodo</h3>
-        <div class="lienzo-wrap"><canvas id="chart-drivers-historico"></canvas></div>
+    <!-- ============ HYC DRIVERS ============ -->
+    <section id="tab-drivers" class="tab-panel activo">
+      <div class="grid-graficas" id="graficas-drivers">
+        <div class="tarjeta-grafica ancho-completo">
+          <h3>Histórico de encuestados por periodo</h3>
+          <div class="lienzo-wrap"><canvas id="chart-drivers-historico"></canvas></div>
+        </div>
+        <!-- TODO: agregar aquí (ver checklist en el comentario de arriba):
+          2. ¿Por qué escogió la modalidad? (barras horiz., 2 periodos)
+          3. ¿Cómo conoció los programas del Poli? (barras horiz., 2 periodos)
+          4. ¿Por qué escogió el Poli? (barras vert., 2 periodos)
+          5. Aspectos importantes en la elección de una carrera (barras vert., 2 periodos)
+          6. ¿Cómo financias tus estudios? (dona, 1 periodo)
+          7. ¿Quién influyó en su decisión de estudiar? (dona, 1 periodo)
+        -->
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Por qué escogió la modalidad?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Cómo conoció los programas del Poli?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Por qué escogió el Poli?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Aspectos importantes en la elección de una carrera</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Cómo financias tus estudios? (dona)</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Quién influyó en su decisión de estudiar? (dona)</div>
       </div>
-      <!--
-        Agrega aquí una <div class="tarjeta-grafica"> por cada pregunta:
-        Modalidad, Cómo conoció el Poli, Por qué el Poli, Motivaciones,
-        Financiación, Influencia en decisión. Copia el patrón de la de
-        arriba (o el de General en el archivo principal) para cada una.
-      -->
-    </div>
-  </section>
+    </section>
 
+    <!-- ============ HYC HÁBITOS ============ -->
+    <section id="tab-habitos" class="tab-panel">
+      <div class="grid-graficas" id="graficas-habitos">
+        <div class="tarjeta-grafica ancho-completo">
+          <h3>Histórico de encuestados por periodo</h3>
+          <div class="lienzo-wrap"><canvas id="chart-habitos-historico"></canvas></div>
+        </div>
+        <!-- TODO:
+          2. ¿Qué otra IES consideró? (barras vert., 3 periodos)
+          3. ¿Qué medios de transporte utiliza? (barras vert., 3 periodos)
+          4. ¿Qué hace en su tiempo libre? (barras horiz., 2 periodos)
+          5. ¿Qué deporte practica? (barras horiz., confirmar periodos con datos reales)
+          6. ¿Qué le gustaría estudiar en Ed. Continua? (barras horiz., 2 periodos)
+          7. ¿Qué contenido consume en Youtube? (barras vert., 2 periodos)
+        -->
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Qué otra IES consideró?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Qué medios de transporte utiliza?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Qué hace en su tiempo libre?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Qué deporte practica?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Qué le gustaría estudiar en Ed. Continua?</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: ¿Qué contenido consume en Youtube?</div>
+      </div>
+    </section>
+
+    <!-- ============ HYC CANALES ============ -->
+    <section id="tab-canales" class="tab-panel">
+      <div class="grid-graficas" id="graficas-canales">
+        <div class="tarjeta-grafica ancho-completo">
+          <h3>Histórico de encuestados por periodo</h3>
+          <div class="lienzo-wrap"><canvas id="chart-canales-historico"></canvas></div>
+        </div>
+        <!-- TODO (ver checklist completo arriba — es el módulo más grande):
+          2. Redes sociales (3 periodos)      6. Canales de Televisión (2 periodos)
+          3. Medios (2 periodos)              7. Emisoras de Radio (2 periodos)
+          4. Frecuencia uso de dispositivo     8. Periódicos y revistas (2 periodos)
+          5. Plataformas Streaming pago        9. Servicios Streaming Audio (1 periodo)
+          10. Rangos etarios por uso de medio — 8 mini-gráficas (Caracol, RCN, City TV,
+              No ve TV, Blu Radio, La Mega, Olímpica, No escucha Radio), necesita RANGO_ETARIO
+        -->
+        <div class="tarjeta-grafica placeholder-todo">TODO: Redes sociales</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Medios</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Frecuencia uso de dispositivo</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Plataformas de Streaming de pago</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Canales de Televisión</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Emisoras de Radio</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Periódicos y revistas</div>
+        <div class="tarjeta-grafica placeholder-todo">TODO: Servicios de Streaming de Audio</div>
+        <div class="tarjeta-grafica placeholder-todo ancho-completo">
+          TODO: Rangos etarios por uso de medio (8 mini-gráficas: Caracol, RCN, City TV,
+          No ve TV, Blu Radio, La Mega, Olímpica, No escucha Radio) — usa RANGO_ETARIO
+        </div>
+      </div>
+    </section>
+
+  </div>
 </main>
 
 <script>
 /* ============================================================
    CONFIGURACIÓN — igual que en caracterizacion_poligran.html
    ============================================================ */
-const SHEET_ID = '17Bjh_ZKdy20C8FDhrtdgBp1C_yhgTSNwfI0nw9QrUX4';
+const SHEET_ID = '1UC56g8s-DlrNtINOde022n8ZQcaHrYT1V2BaDgUGcXE';
 
-// Si Habitos_Consumo resulta grande (probable, es des-dinamizada — puede
-// tener más filas que Banner_Detalle), gviz/tq puede devolver CSV corrupto
-// igual que nos pasó con Banner_Detalle y GENERAL. Si ves columnas con
-// datos pegados/mezclados en la consola, hay que sacar el gid real de la
-// pestaña (Archivo → compartir → o inspeccionando la URL del Sheets con la
-// pestaña abierta) y agregarlo aquí, como con las otras dos.
+// FIX: Habitos_Consumo (des-dinamizada) no cupo en el mismo libro que
+// Banner_Detalle/GENERAL (límite de 10M celdas de Google Sheets) — se
+// sube a un Sheets SEPARADO (ver Celda 9 del notebook). Este es el ID que
+// devolvió la corrida más reciente reportada — CONFIRMAR que sigue siendo
+// el correcto después de que se vuelva a correr el notebook con el cruce
+// de Banner + el fix de PREGUNTA_HOMOLOGA, porque si SHEETS_ID_HYC seguía
+// vacío en la Celda 2 al momento de esa corrida, se pudo haber creado un
+// Sheets NUEVO con un ID distinto.
+const SHEET_ID_HYC = '17Bjh_ZKdy20C8FDhrtdgBp1C_yhgTSNwfI0nw9QrUX4'; // <-- verificar/actualizar
+
+// Es casi seguro que Habitos_Consumo sea grande (des-dinamizada, muchas
+// filas por estudiante) y que gviz/tq le devuelva CSV corrupto, igual que
+// pasó con Banner_Detalle y GENERAL. Abre el Sheets de Habitos_Consumo,
+// mira la pestaña "Habitos_Consumo" (no "Sheet1", que queda vacía — la
+// crea gc.create() por defecto), y saca el gid real de la URL.
 const GIDS = {
   'Banner_Detalle': '1888035612',
   'GENERAL': '399457822'
-  // 'Habitos_Consumo': '...'   <- agregar cuando se sepa el gid
+  // 'Habitos_Consumo': '...'   <- agregar cuando se sepa el gid (Sheets separado)
 };
-function urlHoja(nombrePestana){
+function urlHoja(nombrePestana, sheetId = SHEET_ID){
   const gid = GIDS[nombrePestana];
   if(gid){
-    return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+    return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
   }
-  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(nombrePestana)}`;
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(nombrePestana)}`;
 }
 
 const PALETA = {
@@ -277,9 +486,21 @@ Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
 Chart.defaults.color = PALETA.grisTexto;
 
 /* ============================================================
+   NAVEGACIÓN DE PESTAÑAS
+   ============================================================ */
+document.querySelectorAll('#tabs-nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#tabs-nav button').forEach(b => b.classList.remove('activo'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('activo'));
+    btn.classList.add('activo');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('activo');
+  });
+});
+
+/* ============================================================
    MOTOR DE FILTROS REUTILIZABLE — copiado tal cual del archivo principal.
    No lo modifiques; si necesitas algo distinto, es más seguro pedir el
-   cambio en el archivo principal para que ambos módulos se beneficien.
+   cambio en el archivo principal para que todos los módulos se beneficien.
    ============================================================ */
 function crearMotorFiltros({contenedor, campos, datos, onCambio}){
   const seleccion = {};
@@ -407,27 +628,12 @@ function crearMotorFiltros({contenedor, campos, datos, onCambio}){
 }
 
 /* ============================================================
-   HELPERS REUTILIZABLES — copiados del archivo principal.
+   HELPERS REUTILIZABLES — copiados del archivo principal (General).
    ============================================================ */
 function ordenarCategorias(presentes, ordenPreferido){
   const enOrden = ordenPreferido.filter(c => presentes.has(c));
   const extra = Array.from(presentes).filter(c => !ordenPreferido.includes(c)).sort();
   return [...enOrden, ...extra];
-}
-
-function datasetsApilados(porPeriodo, periodos, campo, ordenPreferido, colorPorCategoria={}){
-  const categoriasPresentes = new Set();
-  periodos.forEach(p => Object.keys(porPeriodo[p][campo]).forEach(c => categoriasPresentes.add(c)));
-  const categorias = ordenarCategorias(categoriasPresentes, ordenPreferido);
-  return categorias.map((cat, i) => ({
-    label: cat,
-    data: periodos.map(p => {
-      const reg = porPeriodo[p];
-      const total = reg.total || 1;
-      return +((reg[campo][cat]||0)/total*100).toFixed(1);
-    }),
-    backgroundColor: colorPorCategoria[cat] || SECUENCIA_COLOR[i % SECUENCIA_COLOR.length]
-  }));
 }
 
 function actualizarLinea(idCanvas, asignar, actual, labels, data, etiqueta, opts={}){
@@ -443,32 +649,7 @@ function actualizarLinea(idCanvas, asignar, actual, labels, data, etiqueta, opts
   asignar(c);
 }
 
-function actualizarApilada(idCanvas, asignar, actual, periodos, datasets){
-  if(actual) actual.destroy();
-  const c = new Chart(document.getElementById(idCanvas), {
-    type:'bar',
-    data:{labels:periodos, datasets},
-    options:{responsive:true, maintainAspectRatio:false,
-      scales:{x:{stacked:true}, y:{stacked:true, max:100, ticks:{callback:v=>v+'%'}}},
-      plugins:{
-        legend:{position:'bottom', labels:{boxWidth:12,font:{size:10}}},
-        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}},
-        datalabels:{color:'#fff', font:{size:9,weight:'600'}, formatter:v=>v>=5?v+'%':''}
-      }}
-  });
-  asignar(c);
-}
-
-// Comparación de 2 periodos (último + mismo semestre año anterior) —
-// mismo patrón que periodosComparablesGeneral() en el archivo principal.
-function periodosComparablesDrivers(periodosDisponibles){
-  if(periodosDisponibles.length === 0) return [];
-  const ultimo = periodosDisponibles[periodosDisponibles.length - 1];
-  const [anio, sem] = ultimo.split('-');
-  const anterior = `${Number(anio) - 1}-${sem}`;
-  return periodosDisponibles.includes(anterior) ? [anterior, ultimo] : [ultimo];
-}
-
+// Gráfica de barras verticales agrupadas (2 o 3 periodos, % por categoría)
 function actualizarComparableVertical(idCanvas, asignar, actual, categorias, datasets){
   if(actual) actual.destroy();
   const c = new Chart(document.getElementById(idCanvas), {
@@ -485,57 +666,150 @@ function actualizarComparableVertical(idCanvas, asignar, actual, categorias, dat
   asignar(c);
 }
 
-/* ============================================================
-   ⬇⬇⬇ TU MÓDULO EMPIEZA AQUÍ ⬇⬇⬇
-   Sigue el patrón de pintarGeneral()/agregarGeneral() del archivo
-   principal (caracterizacion_poligran.html) como referencia — ahí ya está
-   resuelto el caso de "% apilado en todos los periodos" (Estrato,
-   ¿Trabaja?) y "comparación de 2 periodos" (Hijos, Cargo, Salarios), que
-   es exactamente lo que necesitas aquí para Modalidad/Cómo conoció el
-   Poli/etc. (barras, últimos 2 periodos, según el xlsx de mapeo).
-   ============================================================ */
-let chartDriversHistorico; // agrega aquí el resto de tus variables de charts
-
-function ordenarPeriodosDrivers(periodos){
-  // Habitos_Consumo usa SEMESTRE_ENCUESTA, formato 'YYYYS' sin guion
-  // (ej. '20261') -- confirmar esto apenas tengas datos reales, revisando
-  // la columna SEMESTRE_ENCUESTA en la consola.
-  return Array.from(new Set(periodos)).sort((a,b)=>Number(a)-Number(b));
+// Gráfica de barras horizontales agrupadas (2 o 3 periodos, % por categoría)
+// -- mejor que la vertical cuando los textos de categoría son largos
+// (ej. "¿Cómo conoció los programas del Poli?")
+function actualizarComparableHorizontal(idCanvas, asignar, actual, categorias, datasets){
+  if(actual) actual.destroy();
+  const c = new Chart(document.getElementById(idCanvas), {
+    type:'bar',
+    data:{labels:categorias, datasets},
+    options:{responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      scales:{x:{max:100, ticks:{callback:v=>v+'%'}}},
+      plugins:{
+        legend:{position:'bottom', labels:{boxWidth:12,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}},
+        datalabels:{color:PALETA.azulOscuro, anchor:'end', align:'right', font:{size:9,weight:'600'}, formatter:v=>v>=3?v+'%':''}
+      }}
+  });
+  asignar(c);
 }
 
-// TODO: escribe aquí agregarDrivers(filas, periodos) — un solo recorrido
-// de las filas filtradas que construya, por periodo, los conteos que
-// necesites por PREGUNTA_HOMOLOGA/RESPUESTA_HOMOLOGA. Recuerda: cada fila
-// de Habitos_Consumo es una respuesta a una sola pregunta, así que para el
-// histórico de encuestados necesitas contar ESTUDIANTES ÚNICOS por
-// periodo (usa un Set de LLAVE_PERIODO_CORREO o ID_DEL_ESTUDIANTE), no
-// filas.length (eso contaría de más, una vez por cada pregunta respondida).
-
-function pintarDrivers(filas){
-  // TODO: implementar. Como referencia mínima, esto ya deja funcionando
-  // el histórico de encuestados (estudiantes únicos por periodo):
-  const porPeriodo = {};
-  filas.forEach(f => {
-    const p = f.SEMESTRE_ENCUESTA;
-    if(!porPeriodo[p]) porPeriodo[p] = new Set();
-    porPeriodo[p].add(f.LLAVE_PERIODO_CORREO);
+// Dona / pie — para "¿Cómo financias tus estudios?" y "¿Quién influyó en
+// su decisión de estudiar?" (1 solo periodo, no comparación)
+function actualizarDona(idCanvas, asignar, actual, categorias, datos){
+  if(actual) actual.destroy();
+  const c = new Chart(document.getElementById(idCanvas), {
+    type:'doughnut',
+    data:{labels:categorias, datasets:[{data:datos, backgroundColor:categorias.map((_,i)=>SECUENCIA_COLOR[i % SECUENCIA_COLOR.length])}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'right', labels:{boxWidth:12,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed}%`}},
+        datalabels:{color:'#fff', font:{size:9,weight:'600'}, formatter:v=>v>=3?v+'%':''}
+      }}
   });
-  const periodos = ordenarPeriodosDrivers(Object.keys(porPeriodo));
+  asignar(c);
+}
 
-  document.getElementById('kpi-drivers-total').textContent =
-    new Set(filas.map(f => f.LLAVE_PERIODO_CORREO)).size.toLocaleString('es-CO');
-  document.getElementById('kpi-drivers-periodos').textContent = periodos.length;
+// Último periodo + mismo semestre del año anterior — dinámico, NO
+// hardcodear "2026-1"/"2025-1" aunque hoy sea el resultado esperado
+// (confirmado explícitamente por el usuario). Mismo patrón que
+// periodosComparablesGeneral() del archivo principal.
+function periodosComparablesHyc(periodosDisponibles){
+  if(periodosDisponibles.length === 0) return [];
+  const ultimo = periodosDisponibles[periodosDisponibles.length - 1];
+  const [anio, sem] = ultimo.split('-');
+  const anterior = `${Number(anio) - 1}-${sem}`;
+  return periodosDisponibles.includes(anterior) ? [anterior, ultimo] : [ultimo];
+}
 
+// Últimos N periodos cronológicos (para Hábitos/Canales, que a veces
+// comparan 3 periodos en vez de 2 -- ej. "¿Qué otra IES consideró?")
+function ultimosPeriodos(periodosDisponibles, n){
+  return periodosDisponibles.slice(-n);
+}
+
+function ordenarPeriodosHyc(periodos){
+  // PERIODO (de Banner) viene como 'YYYY-S' con guion, igual que GENERAL.
+  return Array.from(new Set(periodos)).sort((a,b) => Number(a.replace('-','')) - Number(b.replace('-','')));
+}
+
+/* ============================================================
+   ⬇⬇⬇ AGREGACIÓN COMPARTIDA — un solo recorrido de las filas filtradas
+   ⬇⬇⬇ para construir, por periodo y por PREGUNTA_HOMOLOGA, el conteo de
+   ⬇⬇⬇ RESPUESTA_HOMOLOGA. Igual patrón de rendimiento que
+   ⬇⬇⬇ agregarGeneral() del archivo principal — nunca recorrer el array
+   ⬇⬇⬇ completo una vez por cada gráfica.
+   ============================================================ */
+function agregarHyc(filas, periodos){
+  const porPeriodo = {};
+  periodos.forEach(p => porPeriodo[p] = {
+    encuestados: new Set(),   // LLAVE_PERIODO_CORREO únicas (evita contar de más -- cada estudiante respondió varias preguntas)
+    preguntas: {}             // PREGUNTA_HOMOLOGA -> {RESPUESTA_HOMOLOGA -> conteo}
+  });
+  for(let i=0;i<filas.length;i++){
+    const f = filas[i];
+    const reg = porPeriodo[f.PERIODO];
+    if(!reg) continue;
+    reg.encuestados.add(f.LLAVE_PERIODO_CORREO);
+    const pregunta = f.PREGUNTA_HOMOLOGA;
+    if(!reg.preguntas[pregunta]) reg.preguntas[pregunta] = {};
+    const resp = f.RESPUESTA_HOMOLOGA;
+    reg.preguntas[pregunta][resp] = (reg.preguntas[pregunta][resp]||0) + 1;
+  }
+  return porPeriodo;
+}
+
+// Dataset comparativo para una PREGUNTA_HOMOLOGA específica, entre los
+// periodos dados. base = 'encuestados' (respuesta única, % sobre total
+// encuestados de ese periodo) o 'respuestas' (multiple respuesta, % sobre
+// total de respuestas dadas a ESA pregunta en ese periodo -- pueden sumar
+// más de 100% si es de opción múltiple).
+function datasetsPregunta(porPeriodo, comparables, pregunta, categorias, base='encuestados'){
+  const coloresPeriodo = [PALETA.azulOscuro, PALETA.azulClaro];
+  return comparables.map((p, i) => {
+    const reg = porPeriodo[p];
+    const respuestas = (reg.preguntas[pregunta]) || {};
+    const denominador = base === 'encuestados'
+      ? (reg.encuestados.size || 1)
+      : (Object.values(respuestas).reduce((a,b)=>a+b,0) || 1);
+    return {
+      label: p,
+      data: categorias.map(cat => +((respuestas[cat]||0)/denominador*100).toFixed(1)),
+      backgroundColor: coloresPeriodo[i % coloresPeriodo.length]
+    };
+  });
+}
+
+/* ============================================================
+   ⬇⬇⬇ TU MÓDULO EMPIEZA AQUÍ ⬇⬇⬇ (uno por sección: Drivers/Hábitos/Canales)
+   ============================================================ */
+let chartDriversHistorico; // agrega aquí el resto de tus charts de Drivers
+let chartHabitosHistorico; // idem Hábitos
+let chartCanalesHistorico; // idem Canales
+
+// TODO: escribe pintarDrivers(filas), pintarHabitos(filas), pintarCanales(filas)
+// siguiendo el patrón de pintarGeneral()/agregarGeneral() del archivo
+// principal como referencia. Como mínimo funcionando, ya queda resuelto el
+// histórico de encuestados de los 3 (ver pintarHyc() más abajo).
+
+function pintarHyc(filas){
+  const periodos = ordenarPeriodosHyc(filas.map(f => f.PERIODO).filter(Boolean));
+  const porPeriodo = agregarHyc(filas, periodos);
+  const comparables = periodosComparablesHyc(periodos);
+  const ultimo = periodos[periodos.length - 1];
+
+  // KPI único (estilo de las capturas de Power BI: "Encuestados <ultimo>: N")
+  document.getElementById('kpi-hyc-valor').textContent =
+    (porPeriodo[ultimo] ? porPeriodo[ultimo].encuestados.size : 0).toLocaleString('es-CO');
+  document.getElementById('kpi-hyc-etiqueta').textContent = `Encuestados ${ultimo}`;
+
+  const historicoData = periodos.map(p => porPeriodo[p].encuestados.size);
+
+  // Histórico se repite igual en los 3 módulos (misma fuente, mismo cálculo)
   actualizarLinea('chart-drivers-historico', c => chartDriversHistorico = c, chartDriversHistorico,
-    periodos, periodos.map(p => porPeriodo[p].size), 'Encuestados', {enteros:true});
+    periodos, historicoData, 'Encuestados', {enteros:true});
+  actualizarLinea('chart-habitos-historico', c => chartHabitosHistorico = c, chartHabitosHistorico,
+    periodos, historicoData, 'Encuestados', {enteros:true});
+  actualizarLinea('chart-canales-historico', c => chartCanalesHistorico = c, chartCanalesHistorico,
+    periodos, historicoData, 'Encuestados', {enteros:true});
 
-  // TODO: agrega aquí el resto de tus gráficas (Modalidad, Cómo conoció
-  // el Poli, Por qué el Poli, Motivaciones, Financiación, Influencia en
-  // decisión), usando periodosComparablesDrivers() + actualizarComparableVertical()
-  // igual que Hijos/Cargo/Salarios en General.
+  // TODO: llamar aquí pintarDrivers(filas, porPeriodo, comparables),
+  // pintarHabitos(...), pintarCanales(...) una vez estén escritas.
 
-  document.getElementById('estado-drivers').style.display = 'none';
-  document.getElementById('graficas-drivers').style.display = '';
+  document.getElementById('estado-hyc').style.display = 'none';
+  document.getElementById('contenido-hyc').style.display = '';
 }
 
 /* ============================================================
@@ -545,7 +819,14 @@ function pintarDrivers(filas){
 /* ============================================================
    CARGA DE DATOS
    ============================================================ */
-fetch(urlHoja('Habitos_Consumo'))
+if(!SHEET_ID_HYC){
+  document.getElementById('estado-hyc').innerHTML = `
+    <div style="font-size:2rem;">⚠</div>
+    <div><strong>Falta configurar SHEET_ID_HYC.</strong></div>
+    <div style="font-size:.82rem;max-width:460px;">Corre la Celda 9 del notebook, copia el ID del Sheets que imprime ("✅ Sheets creado. ID: ...") y pégalo en la constante SHEET_ID_HYC al inicio del &lt;script&gt; de este archivo.</div>`;
+  document.getElementById('estado-hyc').classList.add('error');
+} else {
+fetch(urlHoja('Habitos_Consumo', SHEET_ID_HYC))
   .then(resp => {
     if(!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText} — revisa los permisos de compartir del Sheets`);
     return resp.text();
@@ -561,45 +842,55 @@ fetch(urlHoja('Habitos_Consumo'))
     console.log('[Habitos_Consumo] Valores únicos de PREGUNTA_HOMOLOGA:', [...new Set(filas.map(f => f.PREGUNTA_HOMOLOGA))]);
 
     if(filas.length === 0){
-      throw new Error('La pestaña Habitos_Consumo no tiene filas de datos todavía. Puede ser que el notebook no se haya corrido después del FIX que agregó la subida de esta pestaña.');
+      throw new Error('La pestaña Habitos_Consumo no tiene filas de datos todavía.');
     }
-    // FIX: cuando la pestaña pedida no existe, gviz/tq NO siempre devuelve
-    // un error limpio — a veces devuelve en silencio el CSV de OTRA pestaña
-    // del mismo Sheets (ej. 'KPIs') en vez de 'Habitos_Consumo'. Sin este
-    // chequeo, el módulo mostraba "datos" que en realidad eran de otra
-    // pestaña, sin ningún aviso. Se valida que exista al menos una de las
-    // columnas que Habitos_Consumo debería tener sí o sí.
+    // FIX: cuando la pestaña pedida no existe, gviz/tq a veces devuelve en
+    // silencio el CSV de OTRA pestaña del mismo Sheets (ej. 'Sheet1', la
+    // que crea gc.create() por defecto y queda vacía) en vez de un error.
+    // Se valida que exista al menos una columna que Habitos_Consumo
+    // debería tener sí o sí.
     const columnasEsperadas = ['PREGUNTA_HOMOLOGA', 'RESPUESTA_HOMOLOGA', 'LLAVE_PERIODO_CORREO'];
     const columnasReales = Object.keys(filas[0] || {});
     if(!columnasEsperadas.some(c => columnasReales.includes(c))){
-      throw new Error(`Los datos recibidos no parecen ser de Habitos_Consumo (columnas encontradas: ${columnasReales.join(', ')}). Es probable que la pestaña "Habitos_Consumo" todavía no exista en el Sheets — revisa que el notebook ya se haya corrido con el FIX que agrega su subida.`);
+      // FIX: sin el gid real en GIDS, esto cae a gviz/tq, que devuelve CSV
+      // corrupto para tablas grandes (>50k filas, ver CLAUDE.md) -- las
+      // "columnas" que devuelve en ese caso son basura (texto de celdas
+      // pegado), a veces miles de caracteres. Se trunca el mensaje para
+      // que siga siendo legible en vez de volcar todo eso a la pantalla.
+      const muestra = columnasReales.join(', ');
+      const muestraCorta = muestra.length > 200 ? muestra.slice(0, 200) + '… (truncado)' : muestra;
+      throw new Error(`Los datos recibidos no parecen ser de Habitos_Consumo (columnas encontradas: ${muestraCorta}). Esto suele pasar cuando falta el gid real de "Habitos_Consumo" en GIDS y el fetch cae a gviz/tq, que devuelve CSV corrupto para tablas grandes. Abre el Sheets de Habitos_Consumo, entra a esa pestaña (no "Sheet1"), copia el gid de la URL y agrégalo a GIDS.`);
+    }
+    if(!columnasReales.includes('PERIODO')){
+      console.warn('⚠ No se encontró la columna PERIODO -- esta hoja parece ser de una corrida VIEJA del notebook (antes del cruce con Banner). Vuelve a correr el notebook actualizado.');
     }
 
     document.getElementById('fecha-actualizacion').textContent = 'Datos cargados: ' + filas.length.toLocaleString('es-CO') + ' registros';
 
     crearMotorFiltros({
-      contenedor: document.getElementById('filtros-drivers'),
+      contenedor: document.getElementById('filtros-hyc'),
       campos: [
         {clave:'REGIONAL', etiqueta:'Regional'},
-        {clave:'SEDE', etiqueta:'Sede'},
+        {clave:'SEDE', etiqueta:'Modalidad'},
         {clave:'NIVEL_DE_FORMACION', etiqueta:'Nivel de formación'},
         {clave:'CONVENIO', etiqueta:'Convenio'},
         {clave:'PROGRAMA', etiqueta:'Programa'}
       ],
       datos: filas,
-      onCambio: pintarDrivers
+      onCambio: pintarHyc
     });
 
-    pintarDrivers(filas);
+    pintarHyc(filas);
   })
   .catch(err => {
-    document.getElementById('estado-drivers').innerHTML = `
+    document.getElementById('estado-hyc').innerHTML = `
       <div style="font-size:2rem;">⚠</div>
       <div><strong>No se pudo cargar Habitos_Consumo.</strong></div>
       <div style="font-size:.82rem;max-width:460px;">${err.message}</div>`;
-    document.getElementById('estado-drivers').classList.add('error');
+    document.getElementById('estado-hyc').classList.add('error');
     console.error(err);
   });
+}
 </script>
 </body>
 </html>
